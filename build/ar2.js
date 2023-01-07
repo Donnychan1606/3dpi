@@ -169,6 +169,14 @@ var Qb=[Ik,Zh,_h,Qj,Qi,Pi,Ri,Ag,sg,qg,rg,yg,kh,jh,Oi,Mj];var Rb=[Jk,ki,ji,gi];va
 				visible = this.trackBarcodeMarkerId(markerInfo.idMatrix);
 				markerType = artoolkit.BARCODE_MARKER;
 
+				// console.log('id', markerInfo.id); 
+				// if(markerInfo.id == 141)
+				// {
+				// 	scan_or_show = 1;
+				// }else{
+				// 	scan_or_show = 0;
+				// }
+
 				if (markerInfo.dir !== markerInfo.dirMatrix) {
 					this.setMarkerInfoDir(i, markerInfo.dirMatrix);
 				}
@@ -1193,6 +1201,8 @@ var Qb=[Ik,Zh,_h,Qj,Qi,Pi,Ri,Ag,sg,qg,rg,yg,kh,jh,Oi,Mj];var Rb=[Jk,ki,ji,gi];va
 				constraints.maxHeight = configuration.height;
 			}
 		}
+
+		// constraints.frameRate = {ideal:10, max: 15};
 
 		mediaDevicesConstraints.facingMode = facing;
 
@@ -3002,6 +3012,34 @@ ARjs.Source.prototype._initSourceVideo = function (onReady) {
 ARjs.Source.prototype._initSourceWebcam = function (onReady, onError) {
     var _this = this
 
+	//处理华为手机摄像头获取问题
+	const cinemaFourKConstraints = {
+		video: {width: {exact: 4096}, height: {exact: 2160}}
+	  };
+
+	const huaweiP20CameraConstraints = {
+	video: {width: {exact: 2736}, height: {exact: 3648}}
+	};
+
+	// function getMedia(constraints) {
+	// 	if (stream) {
+	// 		stream.getTracks().forEach(track => {
+	// 		track.stop();
+	// 		});
+	// 	}
+		
+	// 	clearErrorMessage();
+	// 	videoblock.style.display = 'none';
+	// 	navigator.mediaDevices.getUserMedia(constraints)
+	// 		.then(gotStream)
+	// 		.catch(e => {
+	// 			errorMessage('getUserMedia', e.message, e.name);
+	// 		});
+	// }
+
+	// getMedia(cinemaFourKConstraints);
+
+
     // init default value
     onError = onError || function (error) {
         var event = new CustomEvent('camera-error', { error: error });
@@ -3029,14 +3067,15 @@ ARjs.Source.prototype._initSourceWebcam = function (onReady, onError) {
         else console.assert(false)
         onError({
             name: '',
-            message: 'WebRTC issue-! ' + fctName + ' not present in your browser'
+            message: 'WebRTC issue-! ' + fctName + ' not present in your browser, please try on other devices, thank you!'
         });
         return null
     }
 
     // get available devices
     navigator.mediaDevices.enumerateDevices().then(function (devices) {
-        var userMediaConstraints = {
+        
+		var userMediaConstraints = {
             audio: false,
             video: {
                 facingMode: 'environment',
@@ -3052,6 +3091,7 @@ ARjs.Source.prototype._initSourceWebcam = function (onReady, onError) {
                 }
             }
         };
+		// alert("_this.parameters.sourceWidth" + _this.parameters.sourceWidth);
 
         if (null !== _this.parameters.deviceId) {
             userMediaConstraints.video.deviceId = {
@@ -3059,26 +3099,87 @@ ARjs.Source.prototype._initSourceWebcam = function (onReady, onError) {
             };
         }
 
-        // get a device which satisfy the constraints
-        navigator.mediaDevices.getUserMedia(userMediaConstraints).then(function success(stream) {
-            // set the .src of the domElement
-            domElement.srcObject = stream;
+		let isHuawei = navigator.userAgent;
+		let substr = "Huawei";
+		// 应对华为设备的获取视频流方式，目前做直接替换。
+		if(isHuawei.indexOf(substr) >= 0)
+		{
+			navigator.mediaDevices.getUserMedia(cinemaFourKConstraints).then(function success(stream) {
+				// set the .src of the domElement
+				domElement.srcObject = stream;
 
-            var event = new CustomEvent('camera-init', { stream: stream });
-            window.dispatchEvent(event);
-            // to start the video, when it is possible to start it only on userevent. like in android
-            document.body.addEventListener('click', function () {
+				var event = new CustomEvent('camera-init', { stream: stream });
+				window.dispatchEvent(event);
+				// to start the video, when it is possible to start it only on userevent. like in android
+				document.body.addEventListener('click', function () {
                 domElement.play();
             });
             // domElement.play();
 
             onReady();
-        }).catch(function (error) {
-            onError({
-                name: error.name,
-                message: error.message
-            });
-        });
+			}).catch(function (error) {
+				navigator.mediaDevices.getUserMedia(userMediaConstraints).then(function success(stream) {
+					// set the .src of the domElement
+					domElement.srcObject = stream;
+		
+					var event = new CustomEvent('camera-init', { stream: stream });
+					window.dispatchEvent(event);
+					// to start the video, when it is possible to start it only on userevent. like in android
+					document.body.addEventListener('click', function () {
+						domElement.play();
+					});
+					// domElement.play();
+					
+					onReady();
+					return domElement;
+				}).catch(function (error) {
+					onError({
+						name: error.name,
+						message: error.message
+					});
+				});
+			});
+		}else{
+			// get a device which satisfy the constraints
+			navigator.mediaDevices.getUserMedia(userMediaConstraints).then(function success(stream) {
+				// set the .src of the domElement
+				domElement.srcObject = stream;
+	
+				var event = new CustomEvent('camera-init', { stream: stream });
+				window.dispatchEvent(event);
+				// to start the video, when it is possible to start it only on userevent. like in android
+				document.body.addEventListener('click', function () {
+					domElement.play();
+				});
+				// domElement.play();
+	
+				onReady();
+			}).catch(function (error) {
+				navigator.mediaDevices.getUserMedia(cinemaFourKConstraints).then(function success(stream) {
+					// set the .src of the domElement
+					domElement.srcObject = stream;
+		
+					var event = new CustomEvent('camera-init', { stream: stream });
+					window.dispatchEvent(event);
+					// to start the video, when it is possible to start it only on userevent. like in android
+					document.body.addEventListener('click', function () {
+						domElement.play();
+					});
+					// domElement.play();
+		
+					onReady();
+				}).catch(function (error) {
+					
+					onError({
+						name: error.name,
+						message: error.message
+					});
+				});
+			});
+		}
+        
+
+        
     }).catch(function (error) {
         onError({
             message: error.message
