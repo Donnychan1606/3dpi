@@ -1,0 +1,569 @@
+<html>
+<head>
+<title>Barcode marker example with Three.js</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1">
+<style>
+html,body {
+	margin: 0;
+	padding: 0;
+	width: 100%;
+	height: 100%;
+	text-align: center;
+	/* overflow-x: hidden; */
+}
+canvas#buffer {
+  display: none; /* for per-frame data copying */
+}
+canvas#overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+video#video0 {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+</style>
+</head>
+<div id="container">
+	<canvas id="buffer"></canvas>
+	<video id="video0" playsinline autoplay></video>
+	<canvas id="overlay"></canvas>
+</div>
+<body>
+<div id="fps" style="width: 100px; padding: 0px 0px 3px 3px; text-align: left; background-color: rgb(0, 0, 34); display: block;">
+	<div id="fpsText" style="color: rgb(0, 255, 255); font-family: Helvetica, Arial, sans-serif; font-size: 9px; font-weight: bold; line-height: 15px;">INFO:</div>
+</div>
+<img id="source2" width="150" height="150">
+<script async src="./build/artoolkit.debug.js"></script>
+<script src="./build/artoolkit.api.js"></script>
+<script async src="./build/three.min.js"></script>
+<script src="./build/math.js"></script>
+<script src="./build/jsQR.js"></script>
+<script async src="./build/artoolkit.three.js"></script>
+
+<script src="./build/js-colormaps.js"></script>
+
+<script>
+
+window.ARThreeOnLoad = function() {
+
+	ARController.getUserMediaThreeScene({maxARVideoSize: 320, cameraParam: 'camera_para.dat',
+	onSuccess: function(arScene, arController, arCamera) {
+
+		document.body.className = arController.orientation;
+
+		arController.setPatternDetectionMode(artoolkit.AR_MATRIX_CODE_DETECTION);
+		arController.setMatrixCodeType(artoolkit.AR_MATRIX_CODE_4x4);
+		// arController.setMatrixCodeType(artoolkit.AR_MATRIX_CODE_4x4_BCH_13_9_3);
+
+		var renderer = new THREE.WebGLRenderer({antialias: true});
+		// if (arController.orientation === 'portrait') {
+		// 	var w = (window.innerWidth / arController.videoHeight) * arController.videoWidth;
+		// 	var h = window.innerWidth;
+		// 	renderer.setSize(w, h);
+		// 	renderer.domElement.style.paddingBottom = (w-h) + 'px';
+		// } else {
+		// 	if (/Android|mobile|iPad|iPhone/i.test(navigator.userAgent)) {
+		// 		renderer.setSize(window.innerWidth, (window.innerWidth / arController.videoWidth) * arController.videoHeight);
+		// 	} else {
+		// 		renderer.setSize(arController.videoWidth, arController.videoHeight);
+		// 		document.body.className += ' desktop';
+		// 	}
+		// }
+	
+		document.body.insertBefore(renderer.domElement, document.body.firstChild);
+
+		// 扫描二维码
+		var scan_ok = [0, 0, 0];
+		var picture = new Image();
+		var total_frames = [1, 1, 1];
+		var group0 = new THREE.Group;
+		var group1 = new THREE.Group;
+		var group2 = new THREE.Group;
+
+		// See /doc/patterns/Matrix code 3x3 (72dpi)/20.png
+		// var markerRoot = arController.createThreeBarcodeMarker(20);
+
+		function enforceBounds(x) {
+			if (x < 0) {
+				return 0;
+			} else if (x > 1){
+				return 1;
+			} else {
+				return x;
+			}
+		}
+		
+		function interpolateLinearly(x, values) {
+
+			// Split values into four lists
+			var x_values = [];
+			var r_values = [];
+			var g_values = [];
+			var b_values = [];
+			for (i in values) {
+				x_values.push(values[i][0]);
+				r_values.push(values[i][1][0]);
+				g_values.push(values[i][1][1]);
+				b_values.push(values[i][1][2]);
+			}
+
+			var i = 1;
+			while (x_values[i] < x) {
+				i = i+1;
+			}
+			i = i-1;
+
+			var width = Math.abs(x_values[i] - x_values[i+1]);
+			var scaling_factor = (x - x_values[i]) / width;
+
+			// Get the new color values though interpolation
+			var r = r_values[i] + scaling_factor * (r_values[i+1] - r_values[i])
+			var g = g_values[i] + scaling_factor * (g_values[i+1] - g_values[i])
+			var b = b_values[i] + scaling_factor * (b_values[i+1] - b_values[i])
+
+			return [enforceBounds(r), enforceBounds(g), enforceBounds(b)];
+		}
+
+		function cosd(value)
+		{
+			input = value/180*math.pi;
+			return math.cos(input);
+		}
+
+		function sind(value)
+		{
+			input = value/180*math.pi;
+			return math.sin(input);
+		}
+
+		function prepare_matrix()
+		{
+			x_len = 37;
+			y_len = 50;
+
+			// xx matrix
+			xx = new Array(y_len);
+			for(var j=0;j<y_len;j++)
+			{
+				xx[j] = new Array(x_len);
+				for(var i=0;i<x_len;i++)
+				{
+					xx[j][i] = i/(x_len-1);
+				}
+			}
+			// yy matrix
+			yy = new Array(y_len);
+			for(var j=0;j<y_len;j++)
+			{
+				yy[j] = new Array(x_len);
+				yy[j][0] = j/(y_len-1);
+				for(var i=1;i<x_len;i++)
+				{
+					yy[j][i] = yy[j][0];
+				}
+			}
+		}
+
+		function create_model(param, num_model)
+		{
+			var arr_res = param.split(';');
+			
+			// rn_one_beat = 1.76;
+			// sigman_one_beat = 5.01;
+			// thetan_one_beat = 14.72;
+			// xcn_one_beat = 0.34;
+			// ycn_one_beat = 0.36;
+
+			// a1 = 0.61;
+			// b1 = 11.00;
+			// c1 = 4.43;
+			// a2 = -2.74e2;
+			// b2 = 26.40;
+			// c2 = 10.81;
+			// a3 = 2.74e2;
+			// b3 = 26.40;
+			// c3 = 10.83;
+			// a4 = 0.46;
+			// b4 = 44.30;
+			// c4 = 46.05;
+
+			rn_one_beat = Number(arr_res[0]);
+			sigman_one_beat = Number(arr_res[1]);
+			thetan_one_beat = Number(arr_res[2]);
+			xcn_one_beat = Number(arr_res[3]);
+			ycn_one_beat = Number(arr_res[4]);
+
+			a1 = Number(arr_res[5]);
+			b1 = Number(arr_res[6]);
+			c1 = Number(arr_res[7]);
+			a2 = Number(arr_res[8]);
+			b2 = Number(arr_res[9]);
+			c2 = Number(arr_res[10]);
+			a3 = Number(arr_res[11]);
+			b3 = Number(arr_res[12]);
+			c3 = Number(arr_res[13]);
+			frames = Number(arr_res[14]);
+			// a4 = Number(arr_res[14]);
+			// b4 = Number(arr_res[15]);
+			// c4 = Number(arr_res[16]);
+
+			total_frames[num_model] = frames; //82   b4+c4
+
+			prepare_matrix();
+
+			// var C = new Array();
+			C = new Array(total_frames[num_model]);
+		
+			for(var i=1; i<=total_frames[num_model];i++)
+			{
+				eval("obj" + i + "= new THREE.Object3D()" ) ; // 隐式声明全局变量
+			}
+
+			// createFrame(1);
+			// createFrame(2);
+			createFrame(total_frames[num_model], num_model);
+
+			// for(var i=1; i<=total_frames;i++)
+			// {
+			// 	eval("group.add(obj" + i + ")"); //网格模型添加到组中
+			// }
+			return 1;
+		}
+		
+		function createFrame(num_frame, num_model)
+		{
+
+			for(var t=1;t<=num_frame;t++)
+			{
+				C[t-1] = a1*math.exp(-math.square((t-b1)/c1)) + a2*math.exp(-math.square((t-b2)/c2)) + a3*math.exp(-math.square((t-b3)/c3));
+				
+				var P1new = new Array(y_len);
+				var P2new = new Array(y_len);
+				var Tnew = new Array(y_len);
+				
+				for(var j=0;j<y_len;j++)
+				{
+					P1new[j] = new Array(x_len);
+					P2new[j] = new Array(x_len);
+					Tnew[j] = new Array(x_len);
+					for(var i=0;i<x_len;i++)
+					{
+						P1new[j][i] = (xx[j][i]-xcn_one_beat)*cosd(thetan_one_beat)+(yy[j][i]-ycn_one_beat)*sind(thetan_one_beat);
+						P2new[j][i] = (xx[j][i]-xcn_one_beat)*-sind(thetan_one_beat)+(yy[j][i]-ycn_one_beat)*cosd(thetan_one_beat);
+						Tnew[j][i] = C[t-1]*math.exp((-sigman_one_beat/(1+math.square(rn_one_beat)))*(math.square(rn_one_beat*P1new[j][i]) + math.square(P2new[j][i])));
+					}
+				}
+				
+		
+				var size = 10, segmentX = 50, segmentY = 37, depth = 0;
+				// var part = size / segmentX;
+				geometry = new THREE.PlaneGeometry(size, size*segmentX/segmentY, segmentY-1, segmentX-1);
+
+				//设定每帧各点的高度
+				for (k = 0; k < (segmentX ); k++) {
+					for (j = 0; j < (segmentY); j++) {
+						// document.write(geometry.vertices.length+'/r/n');
+						// eval("geometry.vertices[(j) + ((segmentY ) * k)].setZ(-20*Tnew" + num_frame + "[k][j])");
+						geometry.vertices[(j) + ((segmentY ) * k)].setZ(size*Tnew[k][j]);
+					}
+				}
+
+				//设定材质
+				var vertexColorMaterial = new THREE.MeshBasicMaterial( 
+					{ 
+						vertexColors: THREE.VertexColors ,
+						side:THREE.DoubleSide
+					});
+
+				var color, point, face, numberOfSides, vertexIndex;
+
+				// faces用字母索引
+				var faceIndices = [ 'a', 'b', 'c', 'd' ];
+
+				var index = 0;
+				var colormap, index_color;
+
+				// 为几何体的每个点设定颜色
+				for ( var i = 0; i < geometry.vertices.length; i++ ) 
+				{
+					point = geometry.vertices[ i ];
+					color = new THREE.Color( 0xffffff );
+					index = Math.round((point.z/size).toFixed(3) * 500);
+					if(index < 0)
+					{
+						index = 0;
+					}
+					// color.setRGB( 0.1 + point.z / size, 0, 0.9 - point.z / size );
+					colormap = window['jet'];
+					// index_color = interpolateLinearly((point.z/size).toFixed(3), colormap);
+					// if(point.z/size < 0)
+					// {
+
+					// 	console.log('point.z/size is:' + point.z/size);
+					// }
+					// color.setRGB(index_color[0], index_color[1], index_color[2]);
+					color.setRGB(colormap[index][1][0], colormap[index][1][1], colormap[index][1][2]);
+					
+					geometry.colors[i] = color; // use this array for convenience
+				}
+				
+				// 复制颜色到face的vertexColors数组的不同的position
+				for ( var i = 0; i < geometry.faces.length; i++ ) 
+				{
+					face = geometry.faces[i];
+					numberOfSides = ( face instanceof THREE.Face3 ) ? 3 : 4;
+					for( var j = 0; j < numberOfSides; j++ ) 
+					{
+						vertexIndex = face[faceIndices[j]];
+						face.vertexColors[j] = geometry.colors[vertexIndex];
+					}
+
+				}
+
+				//创建帧
+				frame = new THREE.Mesh( geometry, vertexColorMaterial );
+				// frame.rotation.x += Math.PI*0.5;
+				frame.scale.set(0.4, 0.4, 0.4);
+				eval("obj" + num_model + "_" + t + "= frame");
+			}
+		}
+	
+		var num=[1,1,1];
+
+		function switchFrame(num_frame, num_model)
+		{
+			if(num_frame == 1)
+			{
+				eval("group" + num_model + ".remove(obj" + num_model + "_" + total_frames[num_model] + ")");
+				eval("group" + num_model + ".add(obj" + num_model + "_" + num_frame + ")");
+			}else
+			{
+				eval("group" + num_model + ".remove(obj" + num_model + "_" + (num_frame-1) + ")");
+				eval("group" + num_model + ".add(obj" + num_model + "_" + num_frame + ")");
+			}
+			if(num_frame == total_frames[num_model])
+			{
+				//返回第一帧
+				num[num_model] = 0;
+			}
+		}
+
+	
+		var id = -1;
+		// arController.addEventListener("getMarker", (evt) => {
+		// 	const markerType = evt.data.type;
+		// 	const patternType = 0;
+		// 	id = evt.data.marker.id;
+		// 	console.log("id = " + id);
+
+		// 	if (markerType == patternType) {
+		// 		//console.log("onMarkerFound out pattern!!");
+
+		// 		//Do stuff...
+		// 	}
+		// });
+
+		// renderer.domElement.addEventListener('click', function(ev) {
+		// 	ev.preventDefault();
+		// 	console.log("click!!");
+		// 	scan_ok = 0;
+		// 	decode_ok = 0;
+		// }, false);
+
+
+		var bufferCanvas = document.createElement('canvas');
+		var bufferCtx = bufferCanvas.getContext('2d');
+
+		function cropImage(targetCanvas, x, y, width, height) 
+		{
+			x = x + width*0.4;
+			y = y + height*0.4;
+			width = width*(1-0.4*2);
+			height = height*(1-0.4*2);
+			
+			var targetctx = targetCanvas.getContext('2d');
+			var targetctxImageData = targetctx.getImageData(x, y, width, height); // sx, sy, sWidth, sHeight
+
+			bufferCanvas = document.createElement('canvas');
+			bufferCtx = bufferCanvas.getContext('2d');
+
+			bufferCanvas.width = width;
+			bufferCanvas.height = height;
+
+			bufferCtx.rect(0, 0, width, height);
+			bufferCtx.fillStyle = 'red';
+			bufferCtx.fill();
+			bufferCtx.putImageData(targetctxImageData, 0, 0); // imageData, dx, dy
+
+			document.getElementById('source2').src = bufferCanvas.toDataURL('image/jpeg');
+			document.getElementById('source2').style.display = 'initial';
+		}
+
+		var code = ['', '', ''];
+		var decode_ok = [0, 0, 0];
+		var imageData;
+		var bufferCtx;
+		var create_complete = [0, 0, 0];
+
+		function scan2model(num_model)
+		{
+			bufferCtx = arController.canvas.getContext('2d');
+			imageData = bufferCtx.getImageData(0, 0, arController.videoWidth, arController.videoHeight);	
+			// 解码第一个QRcode并获取参数，建立模型
+			try {
+				code_scan = jsQR(imageData.data, imageData.width, imageData.height, {
+					inversionAttempts: 'dontInvert'
+				});
+				// 判断是否扫描到二维码
+				if(code_scan != null)
+				{
+					// 防御机制，防止扫到无关的二维码
+					if(code_scan.data.indexOf(";") != -1)
+					{
+						// 防止扫到已经入库的二维码
+						if(code_scan.data != code[0].data & code_scan.data != code[1].data & code_scan.data != code[2].data)
+						{
+							code[num_model] = code_scan;
+							scan_ok[num_model] = 1;
+							cropImage(arController.canvas, code[num_model].location.topLeftCorner.x, code[num_model].location.topLeftCorner.y,
+							code[num_model].location.topRightCorner.x-code[num_model].location.topLeftCorner.x, code[num_model].location.bottomLeftCorner.y-code[num_model].location.topLeftCorner.y);
+							create_complete[num_model] = create_model(code[num_model].data, num_model);
+							arController.detectMarker(bufferCanvas);
+						}
+					}
+				}
+				
+			}catch(err)
+			{
+				console.log(err);
+			}
+		}
+
+		function decode2marker(num_model)
+		{
+			// 解码-中间的AR Barcode
+			bufferCtx = arController.canvas.getContext('2d');
+			imageData = bufferCtx.getImageData(0, 0, arController.videoWidth, arController.videoHeight);
+			try {
+				code_tmp = jsQR(imageData.data, imageData.width, imageData.height, {
+					inversionAttempts: 'dontInvert'
+				});
+				// 判断是否扫描到二维码
+				if(code_tmp != null)
+				{
+					if(code_tmp.data == code[num_model].data)
+					{
+						cropImage(arController.canvas, code_tmp.location.topLeftCorner.x, code_tmp.location.topLeftCorner.y,
+						code_tmp.location.topRightCorner.x-code_tmp.location.topLeftCorner.x, code_tmp.location.bottomLeftCorner.y-code_tmp.location.topLeftCorner.y);
+						arController.detectMarker(bufferCanvas);
+						markerInfo = arController.getMarker(0);
+						if(markerInfo.id != -1)
+						{
+							console.log('detected marker code id is:' + markerInfo.id);
+							decode_ok[num_model] = 1;
+							eval("var markerRoot" + num_model + " = arController.createThreeBarcodeMarker(markerInfo.id);");
+							eval("markerRoot" + num_model + ".add(group" + num_model + ");");
+							eval("arScene.scene.add(markerRoot" + num_model + ");");
+						}
+					}
+				}
+			}
+			catch(err)
+			{
+				console.log(err);
+			}
+		}
+
+		var tick = function() {
+			arScene.process();
+			arScene.renderOn(renderer);
+			if(!scan_ok[2] || !decode_ok[2])
+			{
+				if(!scan_ok[1] || !decode_ok[1])
+				{
+					if(!scan_ok[0] || !decode_ok[0])
+					{
+						if(!scan_ok[0])
+						{
+							scan2model(0);
+						}else if(!decode_ok[0])
+						{
+							decode2marker(0);
+						}
+					}else
+					{
+						if(!scan_ok[1])
+						{
+							scan2model(1);
+						}
+						if(!decode_ok[1])
+						{
+							decode2marker(1);
+						}
+					}
+				}else
+				{
+					if(!scan_ok[2])
+					{
+						scan2model(2);
+					}
+					if(!decode_ok[2])
+					{
+						decode2marker(2);
+					}
+				}
+			}
+			// else
+			// {
+			// for(var i=0; i<3; i++)
+			// {
+			// 	if(create_complete[i])
+			// 	{
+			// 		switchFrame(num[i], i);
+			// 		num[i]++;
+			// 	}
+			// }
+			if(create_complete[0])
+			{
+				switchFrame(num[0], 0);
+				num[0]++;
+			}
+			if(create_complete[1])
+			{
+				switchFrame(num[1], 1);
+				num[1]++;
+			}
+			if(create_complete[2])
+			{
+				switchFrame(num[2], 2);
+				num[2]++;
+			}
+			// }
+			
+			requestAnimationFrame(tick);
+		};
+
+		tick();
+
+	}});
+
+	delete window.ARThreeOnLoad;
+
+};
+
+if (window.ARController && ARController.getUserMediaThreeScene) {
+	ARThreeOnLoad();
+}
+
+</script>
+
+</body>
+</html>

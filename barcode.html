@@ -1,0 +1,220 @@
+<html>
+<head>
+<title>Barcode marker example with Three.js</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1">
+<style>
+html,body {
+	margin: 0;
+	padding: 0;
+	width: 100%;
+	height: 100%;
+	text-align: center;
+	/* overflow-x: hidden; */
+}
+canvas#buffer {
+  display: none; /* for per-frame data copying */
+}
+canvas#overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+video#video0 {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+</style>
+</head>
+<div id="container">
+	<canvas id="buffer"></canvas>
+	<video id="video0" playsinline autoplay></video>
+	<canvas id="overlay"></canvas>
+</div>
+<body>
+<script id="vert" type="glsl-vertex">
+    precision highp float;
+    precision lowp int;
+    
+    uniform mat4 cameraMatrix;
+    uniform mat4 transformationMatrix;
+    
+    varying vec2 vUv;
+    
+    void main(void)
+    {
+        vUv = uv;
+        gl_Position = cameraMatrix * transformationMatrix * vec4(position, 1.0);
+    }
+</script>
+
+<script id="frag" type="glsl-fragment">
+    precision highp float;
+    precision lowp int;
+    
+    varying vec2 vUv;
+    
+    void main(void)
+    {
+        gl_FragColor = vec4(vUv, 1.0, 1.0);
+    }
+</script>
+
+<script async src="./build/artoolkit.debug.js"></script>
+<script src="./build/artoolkit.api.js"></script>
+<script async src="./build/three.min.js"></script>
+<script src="./build/math.js"></script>
+<script src="./build/jsQR.js"></script>
+<script async src="./build/artoolkit.three.js"></script>
+<!-- include js-aruco -->
+<script src='./build/js-aruco/svd.js'></script>
+<script src='./build/js-aruco/posit1-patched.js'></script>
+<script src='./build/js-aruco/cv.js'></script>
+<script src='./build/js-aruco/aruco.js'></script>
+
+<!-- include some extensions -->
+<!-- <script src='./build/src/threex.webcamgrabbing.js'></script>
+<script src='./build/src/threex.imagegrabbing.js'></script>
+<script src='./build/src/threex.videograbbing.js'></script> -->
+<script src='./build/src/threex.jsarucomarker.js'></script>
+
+<script>
+
+window.ARThreeOnLoad = function() {
+
+	ARController.getUserMediaThreeScene({maxARVideoSize: 640, cameraParam: 'camera_para.dat',
+	onSuccess: function(arScene, arController, arCamera) {
+        
+        var cMat = new THREE.Matrix4();
+        var tMat = new THREE.Matrix4();
+
+        var USE_SHADER = true;
+
+        var shaderMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                cameraMatrix: {type: 'm4', value: cMat },
+                transformationMatrix: {type: 'm4', value: tMat }
+            },
+            vertexShader: vert.text,
+            fragmentShader: frag.text
+        });
+
+		document.body.className = arController.orientation;
+
+		arController.setPatternDetectionMode(artoolkit.AR_MATRIX_CODE_DETECTION);
+
+		var renderer = new THREE.WebGLRenderer({antialias: true});
+		if (arController.orientation === 'portrait') {
+			var w = (window.innerWidth / arController.videoHeight) * arController.videoWidth;
+			var h = window.innerWidth;
+			renderer.setSize(w, h);
+			renderer.domElement.style.paddingBottom = (w-h) + 'px';
+		} else {
+			if (/Android|mobile|iPad|iPhone/i.test(navigator.userAgent)) {
+				renderer.setSize(window.innerWidth, (window.innerWidth / arController.videoWidth) * arController.videoHeight);
+			} else {
+				renderer.setSize(arController.videoWidth, arController.videoHeight);
+				document.body.className += ' desktop';
+			}
+		}
+	
+		document.body.insertBefore(renderer.domElement, document.body.firstChild);
+
+		// 扫描二维码
+		var scan_ok = 0;
+		var picture = new Image();
+		var total_frames = 1;
+		var group = new THREE.Group;
+
+		// See /doc/patterns/Matrix code 3x3 (72dpi)/20.png
+		var markerRoot = new THREE.Object3D();
+
+        markerRoot.wasVisible = false;
+        markerRoot.markerMatrix = new Float64Array(12);
+        markerRoot.matrixAutoUpdate = false;
+        arCamera.matrixAutoUpdate = false;
+
+        var cube = new THREE.Mesh(
+            new THREE.BoxGeometry(1,1,1),
+            USE_SHADER ?
+                shaderMaterial :
+                new THREE.MeshLambertMaterial({ color: 0xffffff, wireframe: false })
+        );
+        markerRoot.add(cube);
+        arScene.scene.add(markerRoot);
+
+        function tick() {
+		requestAnimationFrame(tick);
+
+		if (!arController) {
+			return;
+		}
+
+		arController.detectMarker(arController.canvas);
+		var markerNum = arController.getMarkerNum();
+		if (markerNum > 0) {
+			if (markerRoot.visible) {
+				arController.getTransMatSquareCont(0, 1, markerRoot.markerMatrix, markerRoot.markerMatrix);
+			} else {
+				arController.getTransMatSquare(0 /* Marker index */, 1 /* Marker width */, markerRoot.markerMatrix);
+			}
+			markerRoot.visible = true;
+			if (USE_SHADER) {
+				arController.arglCameraViewRHf(arController.transMatToGLMat(markerRoot.markerMatrix), shaderMaterial.uniforms.transformationMatrix.value.elements);
+			} else {
+				arController.arglCameraViewRHf(arController.transMatToGLMat(markerRoot.markerMatrix), markerRoot.matrix.elements);
+			}
+
+		} else {
+			markerRoot.visible = false;
+		}
+
+		// arController.debugDraw();
+
+		// Render the scene.
+		renderer.autoClear = false;
+		renderer.clear();
+		renderer.render(arScene, arCamera);
+		}
+
+		tick();
+
+		var interval = setTimeout(function() {
+			var cameraParam = new ARCameraParam();
+			cameraParam.onload = async function() {
+
+				arController = new ARController(320, 240, cameraParam);
+				arController.debugSetup();
+
+				var camera_mat = arController.getCameraMatrix();
+
+				if (USE_SHADER) {
+					shaderMaterial.uniforms.cameraMatrix.value.fromArray(camera_mat);
+				} else {
+					arCamera.projectionMatrix.fromArray(camera_mat);
+				}
+
+			};
+			cameraParam.load('camera_para.dat');
+		}, 200);
+
+
+	}});
+
+	delete window.ARThreeOnLoad;
+
+};
+
+if (window.ARController && ARController.getUserMediaThreeScene) {
+	ARThreeOnLoad();
+}
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<link rel="shortcut icon" href="./favicon.ico" type="image/x-icon">
+	<title>3DPI三维场景</title>
+	<style>
+		body {
+			margin: 0;
+			overflow: hidden;
+			/* 隐藏body窗口区域滚动条 */
+		}
+	</style>
+	<!--引入three.js三维引擎-->
+	<script src="./build/three2.min.js"></script>
+	<script src="./build/ar2.js"></script>
+	<!-- include THREEx.ArPatternFile -->
+	<!-- <script src='./build/threex-arpatternfile.js'></script> -->
+
+
+	<!-- <script async src="./build/artoolkit.debug.js"></script>
+  <script src="./build/artoolkit.api.js"></script>
+  <script async src="./build/three.min.js"></script> -->
+	<script src="./build/jsQR.js"></script>
+	<!-- <script async src="./build/artoolkit.three.js"></script> -->
+
+	<script src="./build/js-colormaps.js"></script>
+</head>
+
+<body>
+	<canvas id="canvas"></canvas>
+	<img id="source2" width="150" height="150">
+	<!-- <div id="qrcode" style="width:100px; height:100px; margin-top:15px;"></div> -->
+	<!-- <canvas id="myCanvas" width="250" height="300" style="border:1px solid #d3d3d3;"></canvas> -->
+	<script>
+
+		// var qrcode = new QRCode(document.getElementById("qrcode"), {
+		//     width : 160,
+		//     height : 160
+		// });
+
+		// function makeCode () {		
+		//     qrcode.makeCode("1.76;5.01;14.72;0.34;0.36;0.61;11.00;4.43;-2.74e2;26.40;10.81;2.74e2;26.39;10.83;0.46;44.30;46.05;");
+		//     // qrcode.makeCode("012345678901234567890123456789");
+		//     // qrcode.makeCode("123");
+		// }
+
+		// makeCode();
+
+		// 将canvas表示为base64编码方式
+		// var canvas = document.getElementsByTagName('canvas')[0];
+		// var tmpJPG = canvas.toDataURL("text/plain");//data:text/plain;base64
+		// console.log(tmpJPG);
+
+		/**
+		 * 创建场景对象Scene
+		 */
+		var scene = new THREE.Scene();
+
+		/**
+		 * 相机设置
+		 */
+		var width = window.innerWidth; //窗口宽度
+		var height = window.innerHeight; //窗口高度
+		var zFactor = width / height; //窗口宽高比
+		var s = 20; //三维场景显示范围控制系数，系数越大，显示的范围越大
+		//创建相机对象
+		// var camera = new THREE.OrthographicCamera(-s * k, s * k, s, -s, 1, 1000);
+		// camera.position.set(20, 30, 20); //设置相机位置
+		// 初始化摄像机位置(0，0，0)
+		camera = new THREE.Camera();
+		scene.add(camera);
+
+
+		/**
+		 * 光源设置
+		 */
+		//点光源
+		var point = new THREE.PointLight(0xffffff);
+		point.position.set(400, 200, 300); //点光源位置
+		scene.add(point); //点光源添加到场景中
+		//环境光
+		var ambient = new THREE.AmbientLight(0x444444);
+		scene.add(ambient);
+		// console.log(scene)
+		// console.log(scene.children)
+
+		/**
+		 * 创建渲染器对象
+		 */
+		canvas = document.getElementById("canvas");
+		var renderer = new THREE.WebGLRenderer({
+			antialias: true,
+			alpha: true,
+			canvas: canvas
+		});
+		var devicePixelRatio = window.devicePixelRatio;
+		renderer.setPixelRatio(devicePixelRatio); // 抗锯齿
+		renderer.setClearColor(new THREE.Color('lightgrey'), 0)
+		renderer.setSize(640, 480);
+		renderer.domElement.style.position = 'absolute'
+		renderer.domElement.style.top = '0px'
+		renderer.domElement.style.left = '0px'
+		// document.body.appendChild(renderer.domElement); //body元素中插入canvas对象
+		//执行渲染操作   指定场景、相机作为参数
+
+		// camera.lookAt(scene.position); //设置相机方向(指向的场景对象)
+
+		// 渲染函数
+		function render() {
+			renderer.render(scene, camera);//执行渲染操作
+		}
+		render();
+
+		/** 当浏览器窗口大小变化时触发 */
+		function onWindowResize() {
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+			render.setSize(window.innerWidth, window.innerHeight);
+		}
+
+		// array of functions for the rendering loop 呈现循环的函数数组
+		var onRenderFcts = [];
+
+		// handle arToolkitSource
+		var arToolkitSource = new THREEx.ArToolkitSource({
+			sourceType: 'webcam',
+		})
+		arToolkitSource.init(function onReady() {
+			setTimeout(() => {
+				onResize()
+			}, 1000);
+			if (arToolkitContext.arController !== null) {
+				//   arToolkitContext.arController.arToolkitSource.init(function onReady(){
+				//    arToolkitContext.arController.setPatternDetectionMode(artoolkit.AR_TEMPLATE_MATCHING_MONO_AND_MATRIX);
+				arToolkitContext.arController.setPatternDetectionMode(artoolkit.AR_MATRIX_CODE_DETECTION);
+				arToolkitContext.arController.setMatrixCodeType(artoolkit.AR_MATRIX_CODE_4x4);
+				//    arToolkitContext.arController.setBorderSize(0.3); 
+				//   });
+			}
+		})
+
+		// handle resize
+		window.addEventListener('resize', function () {
+			onResize()
+		})
+
+		function onResize() {
+			arToolkitSource.onResizeElement()
+			arToolkitSource.copyElementSizeTo(renderer.domElement)
+			if (arToolkitContext.arController !== null) {
+				arToolkitSource.copyElementSizeTo(arToolkitContext.arController.canvas)
+			}
+		}
+
+		//initialize arToolkitContext
+
+		// create atToolkitContext
+		var arToolkitContext = new THREEx.ArToolkitContext({
+			cameraParametersUrl: 'camera_para.dat',
+			detectionMode: 'mono_and_matrix',
+			matrixCodeType: '4x4',
+			labelingMode: 'black_region',
+			// maxDetectionRate: 20,
+		})
+
+		// initialize it
+		arToolkitContext.init(function onCompleted() {
+			// copy projection matrix to camera
+			camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
+		})
+
+		// update artoolkit on every frame
+		onRenderFcts.push(function () {
+			if (arToolkitSource.ready === false) return
+
+			arToolkitContext.update(arToolkitSource.domElement)
+
+			// update scene.visible if the marker is seen
+			scene.visible = camera.visible
+		})
+
+		scene.visible = true;
+
+		// var group = new THREE.Group();
+
+
+		// 扫描二维码
+		var scan_ok = [0, 0, 0];
+		var picture = new Image();
+		var total_frames = [1, 1, 1];
+		var group0 = new THREE.Group;
+		var group1 = new THREE.Group;
+		var group2 = new THREE.Group;
+
+		// See /doc/patterns/Matrix code 3x3 (72dpi)/20.png
+		// var markerRoot = arController.createThreeBarcodeMarker(20);
+
+		function cosd(value) {
+			input = value / 180 * Math.PI;
+			return Math.cos(input);
+		}
+
+		function sind(value) {
+			input = value / 180 * Math.PI;
+			return Math.sin(input);
+		}
+
+		function prepare_matrix() {
+			x_len = 37;
+			y_len = 50;
+
+			// xx matrix
+			xx = new Array(y_len);
+			for (var j = 0; j < y_len; j++) {
+				xx[j] = new Array(x_len);
+				for (var i = 0; i < x_len; i++) {
+					xx[j][i] = i / (x_len - 1);
+				}
+			}
+			// yy matrix
+			yy = new Array(y_len);
+			for (var j = 0; j < y_len; j++) {
+				yy[j] = new Array(x_len);
+				yy[j][0] = j / (y_len - 1);
+				for (var i = 1; i < x_len; i++) {
+					yy[j][i] = yy[j][0];
+				}
+			}
+		}
+
+		function create_model(param, num_model) {
+			var arr_res = param.split(';');
+
+			rn_one_beat = Number(arr_res[0]);
+			sigman_one_beat = Number(arr_res[1]);
+			thetan_one_beat = Number(arr_res[2]);
+			xcn_one_beat = Number(arr_res[3]);
+			ycn_one_beat = Number(arr_res[4]);
+
+			a1 = Number(arr_res[5]);
+			b1 = Number(arr_res[6]);
+			c1 = Number(arr_res[7]);
+			a2 = Number(arr_res[8]);
+			b2 = Number(arr_res[9]);
+			c2 = Number(arr_res[10]);
+			a3 = Number(arr_res[11]);
+			b3 = Number(arr_res[12]);
+			c3 = Number(arr_res[13]);
+			frames = Number(arr_res[14]);
+			// a4 = Number(arr_res[14]);
+			// b4 = Number(arr_res[15]);
+			// c4 = Number(arr_res[16]);
+
+			total_frames[num_model] = frames; //82   b4+c4
+
+			prepare_matrix();
+
+			// var C = new Array();
+			C = new Array(total_frames[num_model]);
+
+			for (var i = 1; i <= total_frames[num_model]; i++) {
+				eval("obj" + i + "= new THREE.Object3D()"); // 隐式声明全局变量
+			}
+
+			createFrame(total_frames[num_model], num_model);
+
+			return 1;
+		}
+
+		var P1new, P2new, Tnew;
+
+
+		function createFrame(num_frame, num_model) {
+
+			var i, j, t;
+			for (t = 1; t <= num_frame; t++) {
+				C[t - 1] = a1 * Math.exp(-Math.pow((t - b1) / c1, 2)) + a2 * Math.exp(-Math.pow((t - b2) / c2, 2)) + a3 * Math.exp(-Math.pow((t - b3) / c3, 2));
+
+				P1new = new Array(y_len);
+				P2new = new Array(y_len);
+				Tnew = new Array(y_len);
+
+				for (j = 0; j < y_len; j++) {
+					P1new[j] = new Array(x_len);
+					P2new[j] = new Array(x_len);
+					Tnew[j] = new Array(x_len);
+					for (i = 0; i < x_len; i++) {
+						P1new[j][i] = (xx[j][i] - xcn_one_beat) * cosd(thetan_one_beat) + (yy[j][i] - ycn_one_beat) * sind(thetan_one_beat);
+						P2new[j][i] = (xx[j][i] - xcn_one_beat) * -sind(thetan_one_beat) + (yy[j][i] - ycn_one_beat) * cosd(thetan_one_beat);
+						Tnew[j][i] = C[t - 1] * Math.exp((-sigman_one_beat / (1 + Math.pow(rn_one_beat, 2))) * (Math.pow(rn_one_beat * P1new[j][i], 2) + Math.pow(P2new[j][i], 2)));
+					}
+				}
+
+
+				var size = 10, segmentX = 50, segmentY = 37, depth = 0;
+				// var part = size / segmentX;
+				geometry = new THREE.PlaneGeometry(size, size * segmentX / segmentY, segmentY - 1, segmentX - 1);
+
+				//设定每帧各点的高度
+				for (k = 0; k < (segmentX); k++) {
+					for (j = 0; j < (segmentY); j++) {
+						// document.write(geometry.vertices.length+'/r/n');
+						// eval("geometry.vertices[(j) + ((segmentY ) * k)].setZ(-20*Tnew" + num_frame + "[k][j])");
+						geometry.vertices[(j) + ((segmentY) * k)].setZ(size * Tnew[k][j] * zFactor);
+					}
+				}
+
+				//设定材质
+				var vertexColorMaterial = new THREE.MeshBasicMaterial(
+					{
+						vertexColors: THREE.VertexColors,
+						side: THREE.DoubleSide,
+						opacity: 0.95
+					});
+
+				var color, point, face, numberOfSides, vertexIndex;
+
+				// faces用字母索引
+				var faceIndices = ['a', 'b', 'c', 'd'];
+
+				var index = 0;
+				var colormap, index_color;
+
+				// 为几何体的每个点设定颜色
+				for (var i = 0; i < geometry.vertices.length; i++) {
+					point = geometry.vertices[i];
+					color = new THREE.Color(0xffffff);
+					index = Math.round((point.z / size / zFactor).toFixed(3) * 500);
+					if (index < 0) {
+						index = 0;
+					}
+					// color.setRGB( 0.1 + point.z / size, 0, 0.9 - point.z / size );
+					colormap = window['jet'];
+					// index_color = interpolateLinearly((point.z/size).toFixed(3), colormap);
+					// if(point.z/size < 0)
+					// {
+
+					// 	console.log('point.z/size is:' + point.z/size);
+					// }
+					// color.setRGB(index_color[0], index_color[1], index_color[2]);
+					color.setRGB(colormap[index][1][0], colormap[index][1][1], colormap[index][1][2]);
+
+					geometry.colors[i] = color; // use this array for convenience
+				}
+
+				// 复制颜色到face的vertexColors数组的不同的position
+				for (var i = 0; i < geometry.faces.length; i++) {
+					face = geometry.faces[i];
+					numberOfSides = (face instanceof THREE.Face3) ? 3 : 4;
+					for (var j = 0; j < numberOfSides; j++) {
+						vertexIndex = face[faceIndices[j]];
+						face.vertexColors[j] = geometry.colors[vertexIndex];
+					}
+
+				}
+
+				//创建帧
+				frame = new THREE.Mesh(geometry, vertexColorMaterial);
+				frame.rotation.x -= Math.PI * 0.5;
+				frame.scale.set(0.4, 0.4, 0.4);
+				eval("obj" + num_model + "_" + t + "= frame");
+			}
+		}
+
+		var num = [1, 1, 1];
+
+		function switchFrame(num_frame, num_model) {
+			if (num_frame == 1) {
+				eval("group" + num_model + ".remove(obj" + num_model + "_" + total_frames[num_model] + ")");
+				eval("group" + num_model + ".add(obj" + num_model + "_" + num_frame + ")");
+			} else {
+				eval("group" + num_model + ".remove(obj" + num_model + "_" + (num_frame - 1) + ")");
+				eval("group" + num_model + ".add(obj" + num_model + "_" + num_frame + ")");
+			}
+			if (num_frame == total_frames[num_model]) {
+				//返回第一帧
+				num[num_model] = 0;
+			}
+		}
+
+
+		var id = -1;
+
+		var ScanCanvas = document.createElement('canvas');
+		var scanCtx = ScanCanvas.getContext('2d');
+
+		var bufferCanvas = document.createElement('canvas');
+		var bufferCtx = bufferCanvas.getContext('2d');
+
+		function cropImage(targetCanvas, x, y, width, height) {
+			x = x + width * 0.32;
+			y = y + height * 0.32;
+			width = width * (1 - 0.32 * 2);
+			height = height * (1 - 0.32 * 2);
+
+			var targetctx = targetCanvas.getContext('2d');
+			var targetctxImageData = targetctx.getImageData(x, y, width, height); // sx, sy, sWidth, sHeight
+
+			// bufferCanvas = document.createElement('canvas');
+			// bufferCtx = bufferCanvas.getContext('2d');
+
+			bufferCanvas.width = width;
+			bufferCanvas.height = height;
+
+			bufferCtx.rect(0, 0, width, height);
+			bufferCtx.fillStyle = 'white';
+			bufferCtx.fill();
+			bufferCtx.putImageData(targetctxImageData, 0, 0); // imageData, dx, dy
+
+			document.getElementById('source2').src = bufferCanvas.toDataURL('image/jpeg');
+			document.getElementById('source2').style.display = 'initial';
+		}
+
+		var code = ['', '', ''];
+		var decode_ok = [0, 0, 0];
+		// var scanCanvas = document.getElementsByTagName('canvas')[0];
+		// var imageData;
+		// var Ctx = scanCanvas.getContext('2d');
+		var create_complete = [0, 0, 0];
+		var artoolkitMarker = [];
+		var markerRoot = [];
+		markerRoot[0] = new THREE.Group();
+		markerRoot[1] = new THREE.Group();
+		markerRoot[2] = new THREE.Group();
+		var video = document.getElementsByTagName('video')[0];
+		var width;
+		var height;
+
+		function scan2model(num_model) {
+			// scanCanvas = ;
+			video = document.getElementsByTagName('video')[0];
+			if (video == null) return;
+			width = video.videoWidth;
+			height = video.videoHeight;
+			ScanCanvas.width = width;
+			ScanCanvas.height = height;
+			scanCtx.drawImage(video, 0, 0, width, height);
+			var imageData = scanCtx.getImageData(0, 0, width, height);
+			// 解码第一个QRcode并获取参数，建立模型
+			try {
+				code_scan = jsQR(imageData.data, imageData.width, imageData.height, {
+					inversionAttempts: 'dontInvert'
+				});
+				// 判断是否扫描到二维码
+				if (code_scan != null) {
+					// 防御机制，防止扫到无关的二维码
+					if (code_scan.data.indexOf(";") != -1) {
+						// 防止扫到已经入库的二维码
+						if (code_scan.data != code[0].data & code_scan.data != code[1].data & code_scan.data != code[2].data) {
+							code[num_model] = code_scan;
+							scan_ok[num_model] = 1;
+							cropImage(ScanCanvas, code[num_model].location.topLeftCorner.x, code[num_model].location.topLeftCorner.y,
+								code[num_model].location.topRightCorner.x - code[num_model].location.topLeftCorner.x, code[num_model].location.bottomLeftCorner.y - code[num_model].location.topLeftCorner.y);
+							create_complete[num_model] = create_model(code[num_model].data, num_model);
+							console.log('get model!');
+							var img = document.getElementById('source2');
+							arToolkitContext.arController.detectMarker(img);
+							num_marker = arToolkitContext.arController.getMarkerNum();
+							console.log('num_marker:' + num_marker);
+							for (var i = 0; i < num_marker; i++) {
+								markerInfo = arToolkitContext.arController.getMarker(i);
+								console.log('markerInfo.id:' + markerInfo.id);
+							}
+							// markerInfo = arToolkitContext.arController.getMarker(0);
+							var type = arToolkitContext.arController.getMatrixCodeType();
+							arToolkitContext.arController.setMatrixCodeType(4);
+							// console.log('markerInfo.id:' + markerInfo.id);
+
+						}
+					}
+				}
+
+			} catch (err) {
+				console.log(err);
+			}
+		}
+
+		function decode2marker(num_model) {
+			// 解码-中间的AR Barcode
+			video = document.getElementsByTagName('video')[0];
+			if (video == null) return;
+			ScanCanvas.width = width;
+			ScanCanvas.height = height;
+			scanCtx.drawImage(video, 0, 0, width, height);
+			var imageData = scanCtx.getImageData(0, 0, width, height);
+			try {
+				code_tmp = jsQR(imageData.data, imageData.width, imageData.height, {
+					inversionAttempts: 'dontInvert'
+				});
+				// 判断是否扫描到二维码
+				if (code_tmp != null) {
+					if (code_tmp.data == code[num_model].data) {
+						cropImage(ScanCanvas, code_tmp.location.topLeftCorner.x, code_tmp.location.topLeftCorner.y,
+							code_tmp.location.topRightCorner.x - code_tmp.location.topLeftCorner.x, code_tmp.location.bottomLeftCorner.y - code_tmp.location.topLeftCorner.y);
+						console.log('see you again');
+						var img = document.getElementById('source2');
+						arToolkitContext.arController.detectMarker(img);
+						// markerInfo = arToolkitContext.arController.getMarker(0);
+						num_marker = arToolkitContext.arController.getMarkerNum();
+						console.log('num_marker:' + num_marker);
+						for (var i = 0; i < num_marker; i++) {
+							markerInfo = arToolkitContext.arController.getMarker(i);
+							console.log('markerInfo.id:' + markerInfo.id);
+							if (markerInfo.id != -1) {
+								console.log('detected marker code id is:' + markerInfo.id);
+								decode_ok[num_model] = 1;
+								scene.add(markerRoot[num_model]);
+								artoolkitMarker[num_model] = new THREEx.ArMarkerControls(arToolkitContext, markerRoot[num_model], {
+									type: 'barcode',
+									barcodeValue: markerInfo.id,
+									smooth: true,
+									smoothCount: 5,
+									smoothTolerance: 0.01,
+									smoothThreshold: 2
+								});
+								// eval("var markerRoot" + num_model + " = arController.createThreeBarcodeMarker(markerInfo.id);");
+								eval("markerRoot[num_model].add(group" + num_model + ");");
+							}
+						}
+
+					}
+				}
+			}
+			catch (err) {
+				console.log(err);
+			}
+		}
+
+		var tick = function () {
+			if (!scan_ok[2] || !decode_ok[2]) {
+				if (!scan_ok[1] || !decode_ok[1]) {
+					if (!scan_ok[0] || !decode_ok[0]) {
+						if (!scan_ok[0]) {
+							scan2model(0);
+						} else if (!decode_ok[0]) {
+							decode2marker(0);
+						}
+					} else {
+						if (!scan_ok[1]) {
+							scan2model(1);
+						}
+						if (!decode_ok[1]) {
+							decode2marker(1);
+						}
+					}
+				} else {
+					if (!scan_ok[2]) {
+						scan2model(2);
+					}
+					if (!decode_ok[2]) {
+						decode2marker(2);
+					}
+				}
+			}
+			if (create_complete[0]) {
+				switchFrame(num[0], 0);
+				num[0]++;
+			}
+			if (create_complete[1]) {
+				switchFrame(num[1], 1);
+				num[1]++;
+			}
+			if (create_complete[2]) {
+				switchFrame(num[2], 2);
+				num[2]++;
+			}
+
+			// requestAnimationFrame(tick);
+		};
+
+
+
+		onRenderFcts.push(function (delta) {
+			// switchFrame(loop_i);
+			// loop_i++;
+			tick();
+			// scan2model(0);
+		})
+
+		// render the scene
+		onRenderFcts.push(function () {
+			renderer.render(scene, camera);
+		});
+
+		// run the rendering loop
+		var lastTimeMsec = null
+		requestAnimationFrame(function animate(nowMsec) {
+			// keep looping
+			requestAnimationFrame(animate);
+			//        stats.update();
+			// measure time
+			lastTimeMsec = lastTimeMsec || nowMsec - 1000 / 60
+			var deltaMsec = Math.min(200, nowMsec - lastTimeMsec)
+			lastTimeMsec = nowMsec
+			// call each update function
+			onRenderFcts.forEach(
+				function (onRenderFct) {
+					onRenderFct(deltaMsec / 1000, nowMsec / 1000)
+				})
+		})
+
+
+    //加坐标轴
+    // var axes = new THREE.AxisHelper(10);
+    // markerRoot.add(axes);
+
+
+
+
+	</script>
+</body>
+
+</html>

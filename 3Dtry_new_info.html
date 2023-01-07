@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+<!-- three.js library -->
+<!-- <script src='./build/three.min.js'></script> -->
+<!-- ar.js -->
+<!-- <script src="./build/ar.js"></script> -->
+<!--引入three.js三维引擎-->
+<!-- three.js library -->
+<script src='./build/three2.min.js'></script>
+<!-- ar.js -->
+<script src="./build/ar2.js"></script>
+
+<!-- <script src="./build/three.min.js"></script> -->
+<!-- <script src="./build/ar.js"></script> -->
+<!-- <script src="./build/math.js"></script> -->
+<script src="./build/jsQR.js"></script>
+<script src="./build/THREE.MeshLine.js"></script>
+<script src="./build/js-colormaps.js"></script>
+
+<script>THREEx.ArToolkitContext.baseURL = '../'</script>
+
+<body style='margin : 0px; overflow: hidden; font-family: Monospace;'><div style='position: absolute; top: 10px; width:100%; text-align: center; z-index: 1;'>
+	<a href="https://github.com/AR-js-org/AR.js/" target="_blank">AR.js</a> - three.js camera transform
+	<br/>
+	Contact me any time at <a href='https://twitter.com/nicolocarp' target='_blank'>@nicolocarp</a>
+</div><script>
+	//////////////////////////////////////////////////////////////////////////////////
+	//		Init
+	//////////////////////////////////////////////////////////////////////////////////
+
+	var width = window.innerWidth; //窗口宽度
+    var height = window.innerHeight; //窗口高度
+    var zFactor = width / height; //窗口宽高比
+	
+	// init renderer
+    var devicePixelRatio = window.devicePixelRatio;
+	var renderer	= new THREE.WebGLRenderer({
+		antialias: true,
+		alpha: true
+	});
+    renderer.setPixelRatio (devicePixelRatio);
+	renderer.setClearColor(new THREE.Color('lightgrey'), 0)
+	renderer.setSize( 640, 480 );
+	renderer.domElement.style.position = 'absolute'
+	renderer.domElement.style.top = '0px'
+	renderer.domElement.style.left = '0px'
+	document.body.appendChild( renderer.domElement );
+
+	// array of functions for the rendering loop
+	var onRenderFcts= [];
+
+	// init scene and camera
+	var scene	= new THREE.Scene();
+
+	//////////////////////////////////////////////////////////////////////////////////
+	//		Initialize a basic camera
+	//////////////////////////////////////////////////////////////////////////////////
+
+	// Create a camera
+	var camera = new THREE.Camera();
+	scene.add(camera);
+
+	////////////////////////////////////////////////////////////////////////////////
+	//          handle arToolkitSource
+	////////////////////////////////////////////////////////////////////////////////
+
+	var arToolkitSource = new THREEx.ArToolkitSource({
+		// to read from the webcam
+		sourceType : 'webcam',
+        // sourceWidth:1280,
+        // sourceHeight:960,
+        // displayWidth:1280,
+        // displayHeight:960,
+		// // to read from an image
+		// sourceType : 'image',
+		// sourceUrl : THREEx.ArToolkitContext.baseURL + '../data/images/img.jpg',
+
+		// to read from a video
+		// sourceType : 'video',
+		// sourceUrl : THREEx.ArToolkitContext.baseURL + '../data/videos/headtracking.mp4',
+	})
+
+	arToolkitSource.init(function onReady(){
+        setTimeout(() => {
+            onResize()
+        }, 1000);
+		if( arToolkitContext.arController !== null ){
+        //   arToolkitContext.arController.arToolkitSource.init(function onReady(){
+        //    arToolkitContext.arController.setPatternDetectionMode(artoolkit.AR_TEMPLATE_MATCHING_MONO_AND_MATRIX);
+           arToolkitContext.arController.setPatternDetectionMode(artoolkit.AR_MATRIX_CODE_DETECTION);
+           arToolkitContext.arController.setMatrixCodeType(artoolkit.AR_MATRIX_CODE_4x4);
+        //    arToolkitContext.arController.setBorderSize(0.3); 
+        //   });
+        }
+	})
+
+	// handle resize
+	window.addEventListener('resize', function(){
+		onResize()
+    })
+
+	function onResize(){
+		arToolkitSource.onResizeElement()
+		arToolkitSource.copyElementSizeTo(renderer.domElement)
+		if( arToolkitContext.arController !== null ){
+			arToolkitSource.copyElementSizeTo(arToolkitContext.arController.canvas)
+		}
+	}
+	////////////////////////////////////////////////////////////////////////////////
+	//          initialize arToolkitContext
+	////////////////////////////////////////////////////////////////////////////////
+
+
+	// create atToolkitContext
+	var arToolkitContext = new THREEx.ArToolkitContext({
+		cameraParametersUrl:  'camera_para.dat',
+        detectionMode: 'mono_and_matrix',
+        matrixCodeType: '4x4',
+        labelingMode: 'black_region',
+	})
+	// initialize it
+	arToolkitContext.init(function onCompleted(){
+		// copy projection matrix to camera
+		camera.projectionMatrix.copy( arToolkitContext.getProjectionMatrix() );
+	})
+
+	// update artoolkit on every frame
+	onRenderFcts.push(function(){
+		if( arToolkitSource.ready === false )	return
+
+		arToolkitContext.update( arToolkitSource.domElement )
+
+		// update scene.visible if the marker is seen
+		scene.visible = camera.visible
+	})
+
+	////////////////////////////////////////////////////////////////////////////////
+	//          Create a ArMarkerControls
+	////////////////////////////////////////////////////////////////////////////////
+
+	// 扫描二维码
+    var scan_ok = [0, 0, 0];
+    var picture = new Image();
+    var total_frames = [1, 1, 1];
+    var group0 = new THREE.Group;
+    var group1 = new THREE.Group;
+    var group2 = new THREE.Group;
+
+    // See /doc/patterns/Matrix code 3x3 (72dpi)/20.png
+    // var markerRoot = arController.createThreeBarcodeMarker(20);
+
+    function cosd(value)
+    {
+        input = value/180*Math.PI;
+        return Math.cos(input);
+    }
+
+    function sind(value)
+    {
+        input = value/180*Math.PI;
+        return Math.sin(input);
+    }
+
+    function prepare_matrix()
+    {
+        x_len = 37;
+        y_len = 50;
+
+        // xx matrix
+        xx = new Array(y_len);
+        for(var j=0;j<y_len;j++)
+        {
+            xx[j] = new Array(x_len);
+            for(var i=0;i<x_len;i++)
+            {
+                xx[j][i] = i/(x_len-1);
+            }
+        }
+        // yy matrix
+        yy = new Array(y_len);
+        for(var j=0;j<y_len;j++)
+        {
+            yy[j] = new Array(x_len);
+            yy[j][0] = j/(y_len-1);
+            for(var i=1;i<x_len;i++)
+            {
+                yy[j][i] = yy[j][0];
+            }
+        }
+    }
+
+    function create_model(param, num_model)
+    {
+        var arr_res = param.split(';');
+
+        rn_one_beat = Number(arr_res[0]);
+        sigman_one_beat = Number(arr_res[1]);
+        thetan_one_beat = Number(arr_res[2]);
+        xcn_one_beat = Number(arr_res[3]);
+        ycn_one_beat = Number(arr_res[4]);
+
+        a1 = Number(arr_res[5]);
+        b1 = Number(arr_res[6]);
+        c1 = Number(arr_res[7]);
+        a2 = Number(arr_res[8]);
+        b2 = Number(arr_res[9]);
+        c2 = Number(arr_res[10]);
+        a3 = Number(arr_res[11]);
+        b3 = Number(arr_res[12]);
+        c3 = Number(arr_res[13]);
+        frames = Number(arr_res[14]);
+        // a4 = Number(arr_res[14]);
+        // b4 = Number(arr_res[15]);
+        // c4 = Number(arr_res[16]);
+
+        total_frames[num_model] = frames; //82   b4+c4
+
+        prepare_matrix();
+
+        // var C = new Array();
+        C = new Array(total_frames[num_model]);
+    
+        for(var i=1; i<=total_frames[num_model];i++)
+        {
+            eval("obj" + i + "= new THREE.Object3D()" ) ; // 隐式声明全局变量
+        }
+
+        createFrame(total_frames[num_model], num_model);
+
+        return 1;
+    }
+		
+    var P1new, P2new, Tnew;
+
+
+    function createFrame(num_frame, num_model)
+    {
+
+        var i, j, t;
+        for( t=1;t<=num_frame;t++)
+        {
+            C[t-1] = a1*Math.exp(-Math.pow((t-b1)/c1, 2)) + a2*Math.exp(-Math.pow((t-b2)/c2, 2)) + a3*Math.exp(-Math.pow((t-b3)/c3, 2));
+            
+                P1new = new Array(y_len);
+                P2new = new Array(y_len);
+                Tnew = new Array(y_len);
+            
+            for( j=0;j<y_len;j++)
+            {
+                P1new[j] = new Array(x_len);
+                P2new[j] = new Array(x_len);
+                Tnew[j] = new Array(x_len);
+                for( i=0;i<x_len;i++)
+                {
+                    P1new[j][i] = (xx[j][i]-xcn_one_beat)*cosd(thetan_one_beat)+(yy[j][i]-ycn_one_beat)*sind(thetan_one_beat);
+                    P2new[j][i] = (xx[j][i]-xcn_one_beat)*-sind(thetan_one_beat)+(yy[j][i]-ycn_one_beat)*cosd(thetan_one_beat);
+                    Tnew[j][i] = C[t-1]*Math.exp((-sigman_one_beat/(1+Math.pow(rn_one_beat, 2)))*(Math.pow(rn_one_beat*P1new[j][i], 2) + Math.pow(P2new[j][i], 2)));
+                }
+            }
+            
+    
+            var size = 10, segmentX = 50, segmentY = 37, depth = 0;
+            // var part = size / segmentX;
+            geometry = new THREE.PlaneGeometry(size, size*segmentX/segmentY, segmentY-1, segmentX-1);
+
+            //设定每帧各点的高度
+            for (k = 0; k < (segmentX ); k++) {
+                for (j = 0; j < (segmentY); j++) {
+                    // document.write(geometry.vertices.length+'/r/n');
+                    // eval("geometry.vertices[(j) + ((segmentY ) * k)].setZ(-20*Tnew" + num_frame + "[k][j])");
+                    geometry.vertices[(j) + ((segmentY ) * k)].setZ(size*Tnew[k][j]*zFactor);
+                }
+            }
+
+            //设定材质
+            var vertexColorMaterial = new THREE.MeshBasicMaterial( 
+                { 
+                    vertexColors: THREE.VertexColors ,
+                    side:THREE.DoubleSide,
+                    opacity:0.95
+                });
+
+            var color, point, face, numberOfSides, vertexIndex;
+
+            // faces用字母索引
+            var faceIndices = [ 'a', 'b', 'c', 'd' ];
+
+            var index = 0;
+            var colormap, index_color;
+
+            // 为几何体的每个点设定颜色
+            for ( var i = 0; i < geometry.vertices.length; i++ ) 
+            {
+                point = geometry.vertices[ i ];
+                color = new THREE.Color( 0xffffff );
+                index = Math.round((point.z/size/zFactor).toFixed(3) * 500);
+                if(index < 0)
+                {
+                    index = 0;
+                }
+                // color.setRGB( 0.1 + point.z / size, 0, 0.9 - point.z / size );
+                colormap = window['jet'];
+                // index_color = interpolateLinearly((point.z/size).toFixed(3), colormap);
+                // if(point.z/size < 0)
+                // {
+
+                // 	console.log('point.z/size is:' + point.z/size);
+                // }
+                // color.setRGB(index_color[0], index_color[1], index_color[2]);
+                color.setRGB(colormap[index][1][0], colormap[index][1][1], colormap[index][1][2]);
+                
+                geometry.colors[i] = color; // use this array for convenience
+            }
+            
+            // 复制颜色到face的vertexColors数组的不同的position
+            for ( var i = 0; i < geometry.faces.length; i++ ) 
+            {
+                face = geometry.faces[i];
+                numberOfSides = ( face instanceof THREE.Face3 ) ? 3 : 4;
+                for( var j = 0; j < numberOfSides; j++ ) 
+                {
+                    vertexIndex = face[faceIndices[j]];
+                    face.vertexColors[j] = geometry.colors[vertexIndex];
+                }
+
+            }
+
+            //创建帧
+            frame = new THREE.Mesh( geometry, vertexColorMaterial );
+            frame.rotation.x -= Math.PI*0.5;
+            frame.scale.set(0.4, 0.4, 0.4);
+            eval("obj" + num_model + "_" + t + "= frame");
+        }
+    }
+	
+    var num=[1,1,1];
+
+    function switchFrame(num_frame, num_model)
+    {
+        if(num_frame == 1)
+        {
+            eval("group" + num_model + ".remove(obj" + num_model + "_" + total_frames[num_model] + ")");
+            eval("group" + num_model + ".add(obj" + num_model + "_" + num_frame + ")");
+        }else
+        {
+            eval("group" + num_model + ".remove(obj" + num_model + "_" + (num_frame-1) + ")");
+            eval("group" + num_model + ".add(obj" + num_model + "_" + num_frame + ")");
+        }
+        if(num_frame == total_frames[num_model])
+        {
+            //返回第一帧
+            num[num_model] = 0;
+            loop_i = 0;
+        }
+    }
+
+    var markerRoot = [];
+    markerRoot[0] = new THREE.Group();
+    var artoolkitMarker = [];
+    var num_model = 0;
+    var param = "1.76;5.01;14.72;0.34;0.36;0.61;11.00;4.43;-2.74e2;26.40;10.81;2.74e2;26.39;10.83;81;";
+    create_model(param, 0);
+    scene.add(markerRoot[num_model]);
+    artoolkitMarker[num_model] = new THREEx.ArMarkerControls(arToolkitContext, markerRoot[num_model], {
+        type: 'barcode',
+        barcodeValue: 314,
+		smooth: true,
+		smoothCount: 5,
+		smoothTolerance: 0.01,
+		smoothThreshold: 2
+    });
+    eval("markerRoot[num_model].add(group" + num_model + ");")
+	
+    // 一维脉搏波部分
+    var distance1DPulse = -5;
+    var resolution = new THREE.Vector2( window.innerWidth, window.innerHeight/2 );
+    
+    var points = new Float32Array( 81*3 );
+	for( var j = 0; j < 81 * 3; j += 3 ) {
+		points[ j ] = j/3*0.05-2;
+		points[ j + 1 ] = 0 ;
+		points[ j + 2 ] = C[j/3];
+	}
+    const line = new MeshLine();
+    line.setGeometry(points);
+    // line.setPoints(points);
+    var material = new MeshLineMaterial( {
+		useMap: false,
+		color: new THREE.Color( 0x006699 ),
+		opacity: 1,
+		resolution: resolution,
+		sizeAttenuation: false,
+		lineWidth: 3,
+	});
+    const curve = new THREE.Mesh(line, material);
+    curve.position.z = distance1DPulse;
+    curve.rotateX(-Math.PI*3/4);
+	eval("group" + num_model + ".add(curve);");
+
+    // 红点部分
+    const ballGeometry = new THREE.SphereGeometry( 0.08, 32, 32 );
+    const ballMaterial = new THREE.MeshBasicMaterial( {color: 0xff0000} );
+    const ball_1D = new THREE.Mesh( ballGeometry, ballMaterial );
+    ball_1D.position.set(0, 0, distance1DPulse);
+    ball_1D.renderOrder = 1;
+    eval("group" + num_model + ".add(ball_1D);");
+
+    // 血管部分
+    // param:
+    // pos->0,1,2->'cun' 'guan' 'chi'
+    // depth->0,1,2->'fu' 'zhong' 'chen'
+    function createVessel(pos, depth, num_model) {
+        var vesselGroup = new THREE.Group();
+        var vesselPlaneGeo = new THREE.PlaneGeometry(1,2,2,2);
+        var vesselPointGeo = new THREE.CylinderGeometry(0.1*(depth+1), 0.1*(depth+1), 0.01, 20);
+        var materialPlane = new THREE.MeshBasicMaterial( {color: 0x00ff00, opacity: 0.2,} );
+        var materialPoint = new THREE.MeshBasicMaterial( {color: 0xff0000, side: THREE.DoubleSide } );
+        var vesselPlane = new THREE.Mesh( vesselPlaneGeo, materialPlane );
+        var vesselPoint = new THREE.Mesh(vesselPointGeo, materialPoint);
+        vesselPoint.renderOrder = 1;
+        vesselPlane.rotateX(-Math.PI/2);
+        vesselPoint.position.set(0, 0.2, pos*0.5-0.5);
+        vesselGroup.add(vesselPlane);
+        vesselGroup.add(vesselPoint);
+        vesselGroup.translateZ(3);
+        vesselGroup.translateY(-1);
+        vesselGroup.scale.set(0.5,0.5,0.5);
+        eval("group" + num_model + ".add(vesselGroup);");
+    }
+    // createVessel(1, 2, 0);
+
+    // 浮中沉 横线部分
+    function createVesselLine(pos, depth, num_model) {
+        var vesselLineGeometry = new THREE.Geometry();
+        vesselLineGeometry.vertices.push(
+            new THREE.Vector3( 1, 0, 0 ), // red green blue
+            new THREE.Vector3( -1, 0, 0 ) // red green blue
+        );
+
+        var vesselLineMaterial = new THREE.LineBasicMaterial({
+            color: 0x0000FF
+        });
+
+        var vesselLine = new THREE.Line( vesselLineGeometry, vesselLineMaterial );
+        vesselLine.position.set(0,0,4);
+        eval("group" + num_model + ".add(vesselLine);");
+    }
+    createVesselLine(0, 0, 0);
+
+    // 文字部分
+    var loader = new THREE.FontLoader();
+    loader.load( 'fonts/helvetiker_regular.typeface.json', function ( font ) {
+
+        var arr_text = new Array('BMI', 'POS', 'GEN', 'AGE', 'BP');
+        var bmi = 20;
+        var BMI = "BMI:  " + bmi.toString();
+        var POS = "POS:  " + 'LID';
+        var GEN = "GEN:  " + 'M';
+        var AGE = "AGE:  " + (23).toString();
+        var BP = "BP:  " +'120/85';
+
+        //创建法向量材质
+        // const color = new THREE.Color( 0x006699 );
+        const matLite_blue = new THREE.MeshBasicMaterial( {
+            color: new THREE.Color( 0x006699 ),
+            transparent: true,
+            opacity: 0.8,
+            side: THREE.DoubleSide
+        } );
+        const matLite_red = new THREE.MeshBasicMaterial( {
+            color: new THREE.Color( 0xB0171F ),
+            transparent: true,
+            opacity: 0.8,
+            side: THREE.DoubleSide
+        } );
+
+        var shapes, geometry, mesh;
+
+        for (var i=0;i<5;i++)
+        {
+            eval("shapes = font.generateShapes( " + arr_text[i] + " , 100 );");
+            geometry = new THREE.ShapeBufferGeometry( shapes );
+            // geometry.computeBoundingBox();
+            // xMid = - 0.5 * ( geometry.boundingBox.max.x - geometry.boundingBox.min.x );
+            // geometry.translate( xMid, 0, 0 );
+            switch (i) {
+                case 0:
+                    if( bmi >= 20 )
+                    {
+                        mesh = new THREE.Mesh(geometry, matLite_red);
+                    }
+                    else
+                    {
+                        mesh = new THREE.Mesh(geometry, matLite_blue);
+                    }
+                    break;
+                case 1:
+                    mesh = new THREE.Mesh(geometry, matLite_blue);
+                    break;
+                case 2:
+                    mesh = new THREE.Mesh(geometry, matLite_blue);
+                    break;
+                case 3:
+                    mesh = new THREE.Mesh(geometry, matLite_blue);
+                    break;
+                case 4:
+                    mesh = new THREE.Mesh(geometry, matLite_blue);
+                    break;
+            
+                default:
+                    break;
+            }
+            
+            mesh.position.set(1.5, 0, 4 + i*0.5); // red green blue
+            mesh.rotateX(-Math.PI/4);
+            // mesh.rotateZ(Math.PI);
+            mesh.scale.set(0.003,0.003,0.003);
+            eval("group" + num_model + ".add(mesh);");
+        }
+        
+    });
+
+    // hand图片部分
+    // plane
+    var texture = new THREE.TextureLoader().load( 'leftHand_new.png' );
+
+    var geometry = new THREE.PlaneGeometry(500, 699);
+    var material = new THREE.MeshBasicMaterial({map: texture});  
+    material.transparent = true;
+    var ldp = new THREE.Mesh(geometry, material);
+    ldp.position.set(-1.5, -1, 4); // red green blue
+    ldp.scale.set(0.005, 0.005, 0.005);
+    ldp.rotateX(-Math.PI/2);
+    eval("group" + num_model + ".add(ldp);");
+
+    // 加坐标轴
+    var axisHelper = new THREE.AxisHelper(25);
+    eval("group" + num_model + ".add(axisHelper);");
+    
+    // 加箭头
+    // var dir = new THREE.Vector3( 0, 1, 0 );
+    // var origin = new THREE.Vector3( 3, 0, 0 );
+    // var length = 1;
+    // var hex = 0xff0000;
+    // var arrowHelper = new THREE.ArrowHelper( dir, origin, length, hex );
+    // arrowHelper.rotateX(-Math.PI/2);
+    // arrowHelper.scale.set(5, 5, 5);
+    // eval("group" + num_model + ".add(arrowHelper);");
+
+	// init controls for camera
+	// var markerControls = new THREEx.ArMarkerControls(arToolkitContext, camera, {
+	// 	type : 'pattern',
+	// 	patternUrl : THREEx.ArToolkitContext.baseURL + '../data/data/patt.hiro',
+	// 	// patternUrl : THREEx.ArToolkitContext.baseURL + '../data/data/patt.kanji',
+	// 	// as we controls the camera, set changeMatrixMode: 'cameraTransformMatrix'
+	// 	changeMatrixMode: 'cameraTransformMatrix'
+	// })
+	// as we do changeMatrixMode: 'cameraTransformMatrix', start with invisible scene
+	scene.visible = false
+
+	//////////////////////////////////////////////////////////////////////////////////
+	//		add an object in the scene
+	//////////////////////////////////////////////////////////////////////////////////
+
+	// add a torus knot
+	// var geometry	= new THREE.CubeGeometry(1,1,1);
+	// var material	= new THREE.MeshNormalMaterial({
+	// 	transparent : true,
+	// 	opacity: 0.5,
+	// 	side: THREE.DoubleSide
+	// });
+	// var mesh	= new THREE.Mesh( geometry, material );
+	// mesh.position.y	= geometry.parameters.height/2
+	// scene.add( mesh );
+
+	// var geometry	= new THREE.TorusKnotGeometry(0.3,0.1,64,16);
+	// var material	= new THREE.MeshNormalMaterial();
+	// var mesh	= new THREE.Mesh( geometry, material );
+	// mesh.position.y	= 0.5
+	// scene.add( mesh );
+
+    var C_y, C_z;
+    C_y = new Array(total_frames[num_model]);
+    C_z = new Array(total_frames[num_model]);
+    for(var i=0; i<total_frames[num_model]; i++)
+    {
+        C_y[i] = C[i] * Math.sqrt(2)/2;
+        C_z[i] = C_y[i];
+    }
+
+	loop_i = 1;
+	onRenderFcts.push(function(delta){
+		// mesh.rotation.x += Math.PI*delta
+		switchFrame(loop_i, 0);
+        loop_i++;
+        ball_1D.position.setX(loop_i*0.05-2);
+        ball_1D.position.setY(C_y[loop_i]);
+        ball_1D.position.setZ(-C_z[loop_i] + distance1DPulse);
+	})
+
+	//////////////////////////////////////////////////////////////////////////////////
+	//		render the whole thing on the page
+	//////////////////////////////////////////////////////////////////////////////////
+
+	// render the scene
+	onRenderFcts.push(function(){
+		renderer.render( scene, camera );
+	})
+
+	// run the rendering loop
+	var lastTimeMsec= null
+	requestAnimationFrame(function animate(nowMsec){
+		// keep looping
+		requestAnimationFrame( animate );
+		// measure time
+		lastTimeMsec	= lastTimeMsec || nowMsec-1000/60
+		var deltaMsec	= Math.min(200, nowMsec - lastTimeMsec)
+		lastTimeMsec	= nowMsec
+		// call each update function
+		onRenderFcts.forEach(function(onRenderFct){
+			onRenderFct(deltaMsec/1000, nowMsec/1000)
+		})
+	})
+</script></body>

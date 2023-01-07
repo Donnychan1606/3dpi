@@ -1,0 +1,155 @@
+<html>
+<head>
+<title>Barcode marker example with Three.js</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1">
+<style>
+html,body {
+	margin: 0;
+	padding: 0;
+	width: 100%;
+	text-align: center;
+	overflow-x: hidden;
+}
+.portrait canvas {
+	transform-origin: 0 0;
+	transform: rotate(-90deg) translateX(-100%);
+}
+.desktop canvas {
+ 	transform: scale(-1, 1);
+}
+</style>
+</head>
+<body>
+
+<h1>Barcode marker example with Three.js</h1>
+<p>On Chrome on Android, tap the screen to start playing video stream.</p>
+<p>Show <a href="https://github.com/artoolkit/artoolkit5/blob/master/doc/patterns/Matrix%20code%203x3%20(72dpi)/20.png">3x3 marker id 20</a> to camera to display a colorful sphere on top of it. Tap the sphere to rotate it.
+
+<script async src="./build/artoolkit.debug.js"></script>
+<script src="./build/artoolkit.api.js"></script>
+<script async src="./build/three.min.js"></script>
+<script async src="./build/artoolkit.three.js"></script>
+
+<script>
+
+window.ARThreeOnLoad = function() {
+
+	ARController.getUserMediaThreeScene({maxARVideoSize: 320, cameraParam: 'camera_para.dat',
+	onSuccess: function(arScene, arController, arCamera) {
+
+		document.body.className = arController.orientation;
+
+		arController.setPatternDetectionMode(artoolkit.AR_MATRIX_CODE_DETECTION);
+
+		var renderer = new THREE.WebGLRenderer({antialias: true});
+		if (arController.orientation === 'portrait') {
+			var w = (window.innerWidth / arController.videoHeight) * arController.videoWidth;
+			var h = window.innerWidth;
+			renderer.setSize(w, h);
+			renderer.domElement.style.paddingBottom = (w-h) + 'px';
+		} else {
+			if (/Android|mobile|iPad|iPhone/i.test(navigator.userAgent)) {
+				renderer.setSize(window.innerWidth, (window.innerWidth / arController.videoWidth) * arController.videoHeight);
+			} else {
+				renderer.setSize(arController.videoWidth, arController.videoHeight);
+				document.body.className += ' desktop';
+			}
+		}
+
+		document.body.insertBefore(renderer.domElement, document.body.firstChild);
+
+		// See /doc/patterns/Matrix code 3x3 (72dpi)/20.png
+		var markerRoot = arController.createThreeBarcodeMarker(20);
+
+		var sphere = new THREE.Mesh(
+			new THREE.SphereGeometry(0.5, 8, 8),
+			new THREE.MeshNormalMaterial()
+		);
+		sphere.material.flatShading;
+		sphere.position.z = 0.5;
+		// markerRoot.add(sphere);
+		// arScene.scene.add(markerRoot);
+
+        var group = new THREE.Group();
+        // 文字部分
+        var loader = new THREE.FontLoader();
+
+        loader.load( 'fonts/helvetiker_regular.typeface.json', function ( font ) {
+
+            var textGeometry = new THREE.TextGeometry( 'Hello three.js!', {
+                font: font,
+                size: 80,
+                height: 5,
+                curveSegments: 12,
+                bevelEnabled: true,
+                bevelThickness: 10,
+                bevelSize: 8,
+                bevelSegments: 5
+            });
+
+            //创建法向量材质
+            var meshMaterial = new THREE.MeshNormalMaterial({
+                flatShading: THREE.FlatShading,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            var mesh = new THREE.Mesh(textGeometry, meshMaterial);
+            // mesh.position.set(0, 0, 0);
+            mesh.rotateX(Math.PI);
+            mesh.rotateZ(Math.PI);
+            mesh.scale.set(0.003,0.003,0.003);
+            group.add(mesh);
+        });
+
+        // hand图片部分
+        // plane
+        var texture = new THREE.TextureLoader().load( 'leftHand.png' );
+        
+        var geometry = new THREE.PlaneGeometry(500, 699);
+        var material = new THREE.MeshBasicMaterial({map: texture});  
+        material.transparent = true;
+        var ldp = new THREE.Mesh(geometry, material);
+        ldp.position.set(0, 1, 0);
+        ldp.scale.set(0.005, 0.005, 0.005);
+        // ldp.rotateZ(Math.PI);
+        group.add(ldp);
+
+        // 加坐标轴
+        var axisHelper = new THREE.AxesHelper(25);
+        group.add(axisHelper); 
+        // 加箭头
+        var dir = new THREE.Vector3( 0, 0.3, 0 );
+        var origin = new THREE.Vector3( 0.7, 0, 0.1 );
+        var length = 1;
+        var hex = 0xff0000;
+        var arrowHelper = new THREE.ArrowHelper( dir, origin, length, hex );
+        group.add(arrowHelper);
+
+		// group.add(sphere);
+        
+		markerRoot.add(group);
+		arScene.scene.add(markerRoot);
+
+		var tick = function() {
+			arScene.process();
+			arScene.renderOn(renderer);
+			requestAnimationFrame(tick);
+		};
+
+		tick();
+
+	}});
+
+	delete window.ARThreeOnLoad;
+
+};
+
+if (window.ARController && ARController.getUserMediaThreeScene) {
+	ARThreeOnLoad();
+}
+
+</script>
+
+</body>
+</html>
