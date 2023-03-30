@@ -272,6 +272,7 @@
 				}
 				frame = new THREE.Mesh(geometry, vertexColorMaterial);
 				frame.rotation.x -= Math.PI * 0.5;
+				frame.rotation.y -= Math.PI * 0.25;
 				frame.scale.set(0.4, 0.4, 0.4);
 				eval("obj" + num_model + "_" + Math.round(t / 2) + "= frame");
 				eval("group" + num_model + ".add(obj" + num_model + "_" + Math.round(t / 2) + ")");
