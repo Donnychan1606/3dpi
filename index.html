@@ -4,7 +4,7 @@
 <head>
 	<meta charset="UTF-8">
 	<link rel="shortcut icon" href="./favicon.ico" type="image/x-icon">
-	<title>3DPI三维场景</title>
+	<title>3DPI Scene</title>
 	<style>
 		body {
 			margin: 0;
@@ -29,8 +29,8 @@
 
 <body>
 	<div id="text" style='position: absolute; bottom: 10px; width:100%; text-align: center; z-index: 1;'>
-		<p id="debug" style="color: red; font-size: 25px;"><strong>推荐使用竖屏，依次扫描每个二维码</strong></p>
-		<a onclick="sAlert('effect');">目前已测试设备列表(点击查看)</a>
+		<p id="debug" style="color: red; font-size: 25px;"><strong>It is recommended to use portrait mode and scan each QR code in turn. </strong></p>
+		<a onclick="sAlert('effect');">The list of currently tested devices (click to view)</a>
 	</div>
 	<canvas id="canvas"></canvas>
 	<img id="source1" width="150" height="150">
@@ -100,9 +100,9 @@
 			var txt = document.createElement("p");
 			txt.style.margin = "1em 0"
 			txt.setAttribute("id", "msgTxt");
-			txt.innerHTML = "<span style='color:red;'>更新日期：2021年5月17日</span><strong><span style='font-size:15px;'><br>苹果：<br></span></strong>5s代以后所有机型<br><span style='font-size:10px; color:red;'>7代之前机型可能会出现轻微卡顿</span>";
-			txt.innerHTML += "<strong><span style='font-size:15px;'><br><br>小米及红米系列：<br></span></strong>小米10 获取失败<br>小米10至尊版 正常<br>小米11 正常<br>小米11pro 正常<br>小米10s 正常<br>小米11青春版 正常<br>红米10x 正常<br>红米k30 正常<br>红米Note9 正常<br>红米note8 正常<br>红米k40pro 正常<br>红米k40 正常<br>红米k30 正常<br>红米k30s正常<br><br><strong><span style='font-size:15px;'>华为及荣耀系列：<br></span></strong>";
-			txt.innerHTML += "<span style='font-size:10px; color:red;'>华为p系列、Mate系列及荣耀部分机型，因其摄像头协议问题，可能导致焦距过长及对焦缓慢，影响扫码速度</span><br>Mate40摄像头缩放问题<br>Mate40rs保时捷设计 正常<br>p40系列部分不正常<br>Mate30正常 <br>P30pro摄像头缩放问题<br>p20系列部分摄像头缩放问题<br>nova7 正常<br>nova7p正常<br>nova8正常<br>nova8pro正常<br>畅享20pro正常<br>畅享20plus正常<br>畅享20se正常<br>荣耀30s摄像头缩放问题<br>荣耀30正常<br>荣耀v40轻奢版 正常<br>荣耀v40正常<br><br><strong><span style='font-size:15px;'>vivo系列：</span></strong><br>vivo y30正常<br>vivo s9正常<br>vivo x60pro正常<br>Vivo IQoo7 正常";
+			txt.innerHTML = "<span style='color:red;'>Update date: May 17, 2022</span><strong><span style='font-size:15px;'><br>Apple:<br></span></strong>all models after iPhone 5s<br><span style='font-size:10px; color:red;'>Models before 7th generation may experience slight lag</span>";
+			txt.innerHTML += "<strong><span style='font-size:15px;'><br><br>Xiaomi and Redmi: <br></span></strong>Xiaomi 10 Fail<br>Xiaomi 10Luxury Edition Pass<br>Xiaomi 11 Pass<br>Xiaomi 11pro Pass<br>Xiaomi 10s Pass<br>Xiaomi 11Youth Edition Pass<br>Redmi 10x Pass<br>Redmi k30 Pass<br>Redmi Note9 Pass<br>Redmi note8 Pass<br>Redmi k40pro Pass<br>Redmi k40 Pass<br>Redmi k30 Pass<br>Redmi k30s Pass<br><br><strong><span style='font-size:15px;'>Huawei and Honor:<br></span></strong>";
+			txt.innerHTML += "<span style='font-size:10px; color:red;'>certain models in the Huawei p series, Mate series and Honor, due to camera protocol issues, may cause overly long focal length and slow focusing, affecting scanning speed</span><br>Mate40 camera zoom issues<br>Mate40rs Pass<br>p40 Fail<br>Mate30 Pass <br>P30pro camera zoom issues<br>p20 camera zoom issues<br>nova7 Pass<br>nova7p Pass<br>nova8 Pass<br>nova8pro Pass<br>Changxiang20pro Pass<br>Changxiang20plus Pass<br>Changxiang20se Pass<br>Honor 30s camera zoom issues<br>Honor 30 Pass<br>Honor v40Luxury Edition Pass<br>Honor v40 Pass<br><br><strong><span style='font-size:15px;'>vivo:</span></strong><br>vivo y30 Pass<br>vivo s9 Pass<br>vivo x60pro Pass<br>Vivo IQoo7 Pass";
 			document.getElementById("msgDiv").appendChild(txt);
 		}
 		window.mobileCheck = function () {
@@ -513,7 +513,7 @@
 				}
 			});
 		}
-		// hand图片部分
+		// hand picture
 		// plane
 		function generateHand(num_model, bool_left) {
 			let texture;
