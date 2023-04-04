@@ -464,7 +464,7 @@
 					side: THREE.DoubleSide
 				});
 				let shapes, geometry, mesh;
-				for (let i = 0; i < arr_text.length; i++) {
+				for (let i = 3; i < arr_text.length; i++) {
 					eval("shapes = font.generateShapes( " + arr_text[i] + " , 100 );");
 					geometry = new THREE.ShapeBufferGeometry(shapes);
 					switch (i) {
